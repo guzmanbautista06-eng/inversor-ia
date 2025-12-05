@@ -1,4 +1,7 @@
 streamlit
 yfinance
-transformers
 plotly
+transformers
+torch
+scipy
+numpy
