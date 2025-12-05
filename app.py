@@ -1,3 +1,4 @@
+import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 from transformers import pipeline
@@ -68,7 +69,19 @@ if analizar_btn:
             
             # GRÁFICO
             st.write("### 📉 Tendencia (30 días)")
-            st.line_chart(historial['Close'])
+            # GRÁFICO DE VELAS (CANDLESTICK)
+            st.write("### 📉 Tendencia de Mercado (Velas Japonesas)")
+            
+            fig = go.Figure(data=[go.Candlestick(x=historial.index,
+                            open=historial['Open'],
+                            high=historial['High'],
+                            low=historial['Low'],
+                            close=historial['Close'])])
+            
+            # Personalizamos el diseño para que se vea oscuro y profesional
+            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark")
+            
+            st.plotly_chart(fig, use_container_width=True)
             st.markdown("---")
 
         # B) NOTICIAS E INTELIGENCIA ARTIFICIAL
@@ -128,3 +141,10 @@ if analizar_btn:
 
     except Exception as e:
         st.error(f"Error: {e}")
+        # --- PIE DE PÁGINA / DISCLAIMER ---
+st.markdown("---")
+st.caption("""
+⚠️ **Aviso Legal:** Esta herramienta es un prototipo de ingeniería con fines educativos. 
+El análisis de sentimiento es generado por IA y puede contener errores. 
+No debe tomarse como asesoramiento financiero profesional. Invierte bajo tu propio riesgo.
+""")
