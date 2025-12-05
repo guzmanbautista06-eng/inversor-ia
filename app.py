@@ -16,7 +16,7 @@ from textblob import TextBlob
 # 1. CONFIGURACIÓN DEL SISTEMA
 # ==========================================
 st.set_page_config(
-    page_title="TITANIUM BROKER V17 INSTITUTIONAL", 
+    page_title="TITANIUM BROKER V18 INSTITUCIONAL", 
     page_icon=None, 
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -100,6 +100,34 @@ st.markdown(f"""
         margin-top: 20px;
     }}
 </style>
+<script>
+    // JS para manejar la persistencia de la sesión en localStorage
+    const USER_KEY = 'titanium_user_session';
+    
+    // 1. Al cargar la página, verifica si hay una sesión guardada
+    window.onload = function() {{
+        const savedUser = localStorage.getItem(USER_KEY);
+        if (savedUser) {{
+            // Si hay un usuario, usa Streamlit.setComponentValue para notificar al backend
+            // Usaremos un componente Streamlit invisible para pasar el valor
+            const element = document.getElementById('session_manager');
+            if (element) {{
+                element.value = savedUser;
+                element.dispatchEvent(new Event('change')); 
+            }}
+        }}
+    }};
+    
+    // 2. Función para guardar sesión
+    function saveSession(username) {{
+        localStorage.setItem(USER_KEY, username);
+    }}
+
+    // 3. Función para borrar sesión (al hacer logout)
+    function clearSession() {{
+        localStorage.removeItem(USER_KEY);
+    }}
+</script>
 """, unsafe_allow_html=True)
 
 # ==========================================
@@ -120,9 +148,18 @@ def save_users(db):
 def check_hashes(password, hashed_text):
     return hashlib.sha256(str.encode(password)).hexdigest() == hashed_text
 
+# Inicialización de estado de Seguridad
 if 'db_users' not in st.session_state: st.session_state['db_users'] = load_users()
 if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
 if 'user_current' not in st.session_state: st.session_state['user_current'] = None
+
+# INICIALIZACIÓN DE ESTADO PERSISTENTE DE MONEDERO (CRÍTICO)
+st.session_state.setdefault('liquidez_usd', 10000.0)
+st.session_state.setdefault('posiciones', {})
+st.session_state.setdefault('historial', [])
+st.session_state.setdefault('ticker_actual', 'BTC-USD')
+st.session_state.setdefault('timeframe', '1y')
+
 
 # ==========================================
 # 4. FUNCIONES GLOBALES DE DATOS (ACCESIBLES)
@@ -255,17 +292,32 @@ def set_ticker(t):
 # 7. FUNCIÓN DE LOGIN
 # ==========================================
 def login_screen():
+    # Código para inyectar un componente invisible que el JS pueda modificar
+    st.components.v1.html(
+        """<input type="hidden" id="session_manager" value="False" onchange="window.streamlit_app_rerun=true;" />""",
+        height=0
+    )
+
+    # Si la sesión viene de localStorage (del script JS inyectado)
+    if st.session_state.get('session_data') and st.session_state['session_data'] != 'False':
+        saved_user = st.session_state['session_data']
+        if saved_user in st.session_state['db_users']:
+            st.session_state['authenticated'] = True
+            st.session_state['user_current'] = saved_user
+            return # Salir del login y proceder a main_app
+
+    # Interfaz de Login visible si no hay sesión
     c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
         st.markdown("""
         <div style='text-align: center; padding: 50px; background: rgba(10,14,20,0.8); border: 1px solid #2d323e; border-radius: 16px; backdrop-filter: blur(10px);'>
             <h1 style='font-size: 3rem; margin:0; color:#fff;'>TITANIUM</h1>
-            <p style='color: #4285f4; font-weight:800; letter-spacing: 1px;'>BROKERAGE V17.0</p>
+            <p style='color: #4285f4; font-weight:800; letter-spacing: 1px;'>BROKERAGE V17.1</p>
         </div>
         """, unsafe_allow_html=True)
         
-        tab1, tab2 = st.tabs(["ACCEDER", "CREAR PERFIL"]) # Nombres de pestañas mejorados
+        tab1, tab2 = st.tabs(["ACCEDER", "CREAR PERFIL"])
         
         with tab1:
             st.markdown("<br>", unsafe_allow_html=True)
@@ -278,11 +330,13 @@ def login_screen():
                 if user in db and check_hashes(pw, db[user]):
                     st.session_state['authenticated'] = True
                     st.session_state['user_current'] = user
+                    # Llamar a JS para guardar sesión
+                    st.components.v1.html(f"<script>saveSession('{user}');</script>", height=0)
                     st.rerun()
                 else: st.error("Acceso Denegado")
             st.caption("Demo: admin / admin123")
 
-        with tab2: # Lógica de Registro Mejorada
+        with tab2: 
             st.markdown("<br>", unsafe_allow_html=True)
             nu = st.text_input("ID DE PERFIL NUEVO", key="nu", placeholder="Elija su nombre de usuario")
             np = st.text_input("CREAR CLAVE", type="password", key="np", placeholder="Mínimo 6 caracteres")
@@ -290,12 +344,9 @@ def login_screen():
 
             if st.button("REGISTRAR PERFIL SEGURO", use_container_width=True):
                 db = load_users()
-                if nu in db:
-                    st.error("Error: El ID de perfil ya existe.")
-                elif len(np) < 6:
-                    st.error("Error: La clave debe tener al menos 6 caracteres.")
-                elif np != cp:
-                    st.error("Error: Las claves no coinciden.")
+                if nu in db: st.error("Error: El ID de perfil ya existe.")
+                elif len(np) < 6: st.error("Error: La clave debe tener al menos 6 caracteres.")
+                elif np != cp: st.error("Error: Las claves no coinciden.")
                 else:
                     db[nu] = hashlib.sha256(str.encode(np)).hexdigest()
                     save_users(db)
@@ -306,11 +357,7 @@ def login_screen():
 # 8. FUNCIÓN PRINCIPAL DE LA APLICACIÓN
 # ==========================================
 def main_app():
-    # Inicialización
-    defaults = {'dinero': 10000.0, 'acciones': 0.0, 'historial': [], 
-                'ticker_actual': 'BTC-USD', 'timeframe': '1y'}
-    for k, v in defaults.items():
-        if k not in st.session_state: st.session_state[k] = v
+    # El estado persistente ya fue inicializado al inicio del script.
 
     COMMISSION_RATE = 0.0015 
     
@@ -321,10 +368,16 @@ def main_app():
     df_analysis, news_list, sent_score = get_ai_analysis(st.session_state['ticker_actual'])
     
     # Lógica de Operativa
+    current_ticker = st.session_state['ticker_actual']
+    # Obtener cantidad de la posición actual de forma segura
+    current_qty = st.session_state['posiciones'].get(current_ticker, 0.0)
+
     try:
-        equity = st.session_state['dinero'] + (st.session_state['acciones'] * lp)
+        valor_posicion = current_qty * lp
+        equity = st.session_state['liquidez_usd'] + valor_posicion
     except:
-        equity = st.session_state['dinero']
+        valor_posicion = 0.0
+        equity = st.session_state['liquidez_usd']
 
     # --- BARRA LATERAL ---
     with st.sidebar:
@@ -333,11 +386,16 @@ def main_app():
         if curr_t != st.session_state['ticker_actual']: set_ticker(curr_t)
         
         st.markdown("---")
-        st.metric("PODER DE COMPRA", f"${st.session_state['dinero']:,.2f}")
-        st.metric("VALOR CARTERA", f"${equity:,.2f}")
+        # Mostrar liquidez_usd y el valor de la posición actual
+        st.metric("LIQUIDEZ USD", f"${st.session_state['liquidez_usd']:,.2f}")
+        st.metric("POSICIÓN VALORIZADA", f"${valor_posicion:,.2f}")
+        st.metric(f"UNIDADES {current_ticker}", f"{current_qty:.4f}") # POSICIÓN ESPECÍFICA
+        st.metric("VALOR CARTERA TOTAL", f"${equity:,.2f}")
         
         st.markdown("---")
         if st.button("CERRAR SESIÓN"):
+            # Llama a JS para borrar la clave localmente
+            st.components.v1.html("<script>clearSession();</script>", height=0)
             st.session_state['authenticated'] = False
             st.rerun()
 
@@ -356,6 +414,9 @@ def main_app():
             <div>
                 <h1 class="ticker-name">{st.session_state['ticker_actual']}</h1>
                 <div class="company-name">{long_name}</div>
+                <div style='font-family: Roboto Mono; font-size: 1.1rem; color: #888; margin-top: 5px;'>
+                    POSICIÓN ACTUAL: {current_qty:.4f} {st.session_state['ticker_actual']}
+                </div>
             </div>
             <div>
                 <div class="live-price {txt_cls}">${lp:,.2f}</div>
@@ -425,36 +486,60 @@ def main_app():
         with c_b:
             with st.container(border=True):
                 st.markdown("<h3 style='color:#34a853'>COMPRAR</h3>", unsafe_allow_html=True)
-                amount = st.number_input("Monto a invertir ($)", 0.0, st.session_state['dinero'], step=100.0, key="buy_amount_input")
+                # LÍMITE: liquidez_usd
+                amount = st.number_input("Monto a invertir ($)", 0.0, st.session_state['liquidez_usd'], step=100.0, key="buy_amount_input")
                 
                 fee = amount * COMMISSION_RATE
-                total = amount
+                total_cost = amount 
                 shares = (amount - fee) / lp if lp > 0 else 0
                 
                 st.markdown(f"""
                 <div style='display:flex; justify-content:space-between; color:#888; font-size:0.9rem;'>
-                    <span>Comisión:</span><span>${fee:.2f}</span>
+                    <span>Comisión ({COMMISSION_RATE*100}%)</span><span>${fee:.2f}</span>
                 </div>
                 <div style='display:flex; justify-content:space-between; color:#fff; font-weight:bold; font-size:1.1rem; border-top:1px solid #333; margin-top:5px; padding-top:5px;'>
-                    <span>Recibes:</span><span>{shares:.4f} acc</span>
+                    <span>Recibes:</span><span>{shares:.4f} {st.session_state['ticker_actual']}</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 if st.button("CONFIRMAR COMPRA", key="btn_buy", use_container_width=True, type="primary"):
-                    if amount > 0:
-                        st.session_state['dinero'] -= total
-                        st.session_state['acciones'] += shares
-                        st.session_state['historial'].append(f"BUY {shares:.4f} @ ${lp:.2f}")
+                    if amount > 0 and st.session_state['liquidez_usd'] >= total_cost:
+                        st.session_state['liquidez_usd'] -= total_cost
+                        # --- MODIFICACIÓN CLAVE DE ESTADO ---
+                        st.session_state['posiciones'][current_ticker] = current_qty + shares
+                        st.session_state['historial'].append(f"BUY {shares:.4f} {st.session_state['ticker_actual']} @ ${lp:.2f}")
                         st.success("ORDEN EJECUTADA")
                         time.sleep(1)
                         st.rerun()
+                    else:
+                         st.error("Fondos insuficientes.")
 
         with c_s:
             with st.container(border=True):
                 st.markdown("<h3 style='color:#ea4335'>VENDER</h3>", unsafe_allow_html=True)
-                qty = st.number_input("Cantidad acciones", 0.0, st.session_state['acciones'], step=0.1, key="sell_qty_input")
                 
-                gross = qty * lp
+                col_qty, col_all = st.columns([3, 1])
+                
+                # Input de cantidad (Límite máximo la posición actual)
+                qty = col_qty.number_input("Cantidad acciones", 0.0, current_qty, step=0.0001, key="sell_qty_input")
+                
+                # Lógica de Botón Venta Total (Trigger)
+                if col_all.button("TODO", key="btn_sell_all", use_container_width=True):
+                    # Al presionar TODO, forzamos la venta total usando la cantidad actual de inmediato en el siguiente ciclo
+                    # **SOLUCIÓN FINAL:** La venta total se ejecuta en el siguiente ciclo, no en este.
+                    st.session_state['liquidar_todo'] = True
+                    st.rerun() 
+
+                # Lógica para la Venta Parcial/Total
+                if st.session_state.get('liquidar_todo', False):
+                    # Si la bandera está activa, la cantidad a vender es el total
+                    qty_to_sell = current_qty
+                else:
+                    # Si no, es la cantidad que el usuario puso en el input
+                    qty_to_sell = qty 
+
+                # Calcular costos (usando qty_to_sell)
+                gross = qty_to_sell * lp
                 fee_s = gross * COMMISSION_RATE
                 net = gross - fee_s
                 
@@ -463,18 +548,26 @@ def main_app():
                     <span>Comisión:</span><span>${fee_s:.2f}</span>
                 </div>
                 <div style='display:flex; justify-content:space-between; color:#fff; font-weight:bold; font-size:1.1rem; border-top:1px solid #333; margin-top:5px; padding-top:5px;'>
-                    <span>Recibes:</span><span>${net:.2f}</span>
+                    <span>Recibes (USD Neto):</span><span>${net:.2f}</span>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 if st.button("CONFIRMAR VENTA", key="btn_sell", use_container_width=True):
-                    if qty > 0:
-                        st.session_state['dinero'] += net
-                        st.session_state['acciones'] -= qty
-                        st.session_state['historial'].append(f"SELL {qty:.4f} @ ${lp:.2f}")
+                    
+                    # Validación estricta
+                    if qty_to_sell > 0 and current_qty >= qty_to_sell: 
+                        st.session_state['liquidez_usd'] += net
+                        # --- MODIFICACIÓN CLAVE DE ESTADO ---
+                        st.session_state['posiciones'][current_ticker] = current_qty - qty_to_sell
+                        st.session_state['historial'].append(f"SELL {qty_to_sell:.4f} {st.session_state['ticker_actual']} @ ${lp:.2f}")
                         st.success("ORDEN EJECUTADA")
-                        time.sleep(1)
+                        
+                        # Resetear la bandera y el input después de la venta exitosa
+                        st.session_state['liquidar_todo'] = False 
                         st.rerun()
+                    else:
+                        st.error("Cantidad insuficiente para vender.")
+                        st.session_state['liquidar_todo'] = False # Asegurar que la bandera se resetee en fallo
 
     # --- PESTAÑA CEREBRO QUANTUM & NOTICIAS ---
     with tab_ai:
@@ -523,7 +616,7 @@ def main_app():
             else:
                 st.write("Sin noticias recientes relevantes o error de conexión.")
         
-        # --- LOGS (MOVIDO AQUÍ PARA SIMPLIFICAR PESTAÑAS) ---
+        # --- LOGS ---
         st.markdown("---")
         st.markdown("#### AUDITORÍA DE TRANSACCIONES")
         if st.session_state['historial']:
@@ -535,6 +628,11 @@ def main_app():
 # ==========================================
 # 6. INICIO (CONTROL DE FLUJO)
 # ==========================================
+# Capturar el valor de la sesión guardada desde el JS (CORREGIDO)
+session_data = st.query_params.get('session_data', [None])[0]
+if session_data:
+    st.session_state['session_data'] = session_data
+
 if not st.session_state['authenticated']:
     login_screen()
 else:
