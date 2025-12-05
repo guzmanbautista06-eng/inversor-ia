@@ -1,150 +1,140 @@
-import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 from transformers import pipeline
 
-# --- 1. CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Inversor IA", page_icon="📈", layout="wide")
+# --- 1. CONFIGURACIÓN INICIAL ---
+st.set_page_config(page_title="Hedge Fund IA", page_icon="💰", layout="wide")
 
-# --- 2. CARGAMOS EL CEREBRO (IA) ---
-# Usamos caché para que no se descargue cada vez que tocas un botón
+# --- 2. GESTIÓN DE MEMORIA (SESSION STATE) ---
+if 'dinero' not in st.session_state:
+    st.session_state['dinero'] = 10000.0
+if 'acciones' not in st.session_state:
+    st.session_state['acciones'] = 0
+if 'historial_transacciones' not in st.session_state:
+    st.session_state['historial_transacciones'] = []
+
+# --- 3. CARGA DE MODELO ---
 @st.cache_resource
 def cargar_modelo():
     return pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone")
 
-# Mensaje de carga inicial
-with st.spinner('Cargando Cerebro Financiero...'):
+with st.spinner('Despertando a la IA...'):
     analista_ia = cargar_modelo()
 
-# --- 3. BARRA LATERAL (CONFIGURACIÓN) ---
-st.sidebar.header("Configuración")
-empresa = st.sidebar.text_input("Ticker (Ej: AAPL, NVDA, TSLA):", "AAPL")
+# --- 4. BARRA LATERAL ---
+st.sidebar.header("🏦 Tu Billetera Virtual")
 
-# ESTE ES EL ÚNICO BOTÓN QUE DEBE EXISTIR
-analizar_btn = st.sidebar.button("🔍 Analizar Mercado Ahora")
+saldo_actual = st.session_state['dinero']
+acciones_actuales = st.session_state['acciones']
 
-# Información extra de la empresa en la barra lateral
-if empresa:
+st.sidebar.metric(label="Dinero Disponible (USD)", value=f"${saldo_actual:,.2f}")
+st.sidebar.metric(label="Acciones en Cartera", value=f"{acciones_actuales:.4f}")
+
+st.sidebar.markdown("---")
+st.sidebar.header("Configuración de Trading")
+empresa = st.sidebar.text_input("Ticker (Ej: AAPL, TSLA):", "TSLA")
+umbral = st.sidebar.slider("Nivel de Confianza para operar", 0.50, 0.99, 0.85)
+
+if st.sidebar.button("🔄 Reiniciar Cuenta"):
+    st.session_state['dinero'] = 10000.0
+    st.session_state['acciones'] = 0
+    st.session_state['historial_transacciones'] = []
+    st.rerun()
+
+# --- 5. LÓGICA PRINCIPAL ---
+st.title(f"🤖 Auto-Trading con IA: {empresa.upper()}")
+
+if st.button("🔴 EJECUTAR ANÁLISIS Y OPERAR"):
     try:
-        ticker_info = yf.Ticker(empresa).info
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("🏢 Perfil")
-        st.sidebar.write(f"**Sector:** {ticker_info.get('sector', 'N/A')}")
-        st.sidebar.write(f"**País:** {ticker_info.get('country', 'N/A')}")
-    except:
-        pass
-
-# --- 4. TÍTULO PRINCIPAL ---
-st.title(f"🤖 Inversor IA: Análisis de {empresa.upper()}")
-
-# --- 5. LÓGICA PRINCIPAL (BACKEND) ---
-if analizar_btn:
-    try:
-        # A) OBTENER DATOS FINANCIEROS Y GRÁFICOS
+        # A) OBTENER PRECIO
         ticker = yf.Ticker(empresa)
         historial = ticker.history(period="1mo")
         
-        if not historial.empty:
-            datos_hoy = historial.iloc[-1]
-            datos_ayer = historial.iloc[-2]
-            
-            precio_actual = datos_hoy['Close']
-            cambio = precio_actual - datos_ayer['Close']
-            cambio_pct = (cambio / datos_ayer['Close']) * 100
-
-            # KPIs (Tarjetas de métricas)
-            st.write("### 📊 Tablero de Control")
-            kpi1, kpi2, kpi3 = st.columns(3)
-            
-            with kpi1:
-                st.metric(label="Precio", value=f"${precio_actual:.2f}", delta=f"{cambio:.2f} ({cambio_pct:.2f}%)")
-            with kpi2:
-                volumen = datos_hoy.get('Volume', 0)
-                st.metric(label="Volumen", value=f"{volumen:,}")
-            with kpi3:
-                pe = ticker.info.get('forwardPE', 'N/A')
-                st.metric(label="Ratio P/E", value=pe)
-            
-            st.markdown("---")
-            
-            # GRÁFICO
-            st.write("### 📉 Tendencia (30 días)")
-            # GRÁFICO DE VELAS (CANDLESTICK)
-            st.write("### 📉 Tendencia de Mercado (Velas Japonesas)")
-            
-            fig = go.Figure(data=[go.Candlestick(x=historial.index,
-                            open=historial['Open'],
-                            high=historial['High'],
-                            low=historial['Low'],
-                            close=historial['Close'])])
-            
-            # Personalizamos el diseño para que se vea oscuro y profesional
-            fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark")
-            
-            st.plotly_chart(fig, use_container_width=True)
-            st.markdown("---")
-
-        # B) NOTICIAS E INTELIGENCIA ARTIFICIAL
-        st.write(f"### 📡 Noticias y Análisis de Sentimiento")
-        
-        noticias = ticker.news
-        
-        if not noticias:
-            st.warning("No se encontraron noticias recientes.")
+        if historial.empty:
+            st.error("No se pudo obtener el precio. Revisa el Ticker.")
         else:
-            # Encabezados de la tabla
-            col1, col2, col3 = st.columns([3, 1, 1])
-            col1.subheader("Titular")
-            col2.subheader("Veredicto IA")
-            col3.subheader("Certeza")
-            st.markdown("---")
+            precio_actual = historial['Close'].iloc[-1]
+            st.metric("Precio de Mercado Actual", f"${precio_actual:.2f}")
 
-            conteo_pos = 0
-            conteo_neg = 0
+            # B) DESCARGAR NOTICIAS
+            noticias = ticker.news
+            st.write("---")
+            st.subheader("📢 Bitácora de Operaciones de la IA")
             
-            barra = st.progress(0)
+            col_noticias, col_log = st.columns([2, 1])
 
-            for i, item in enumerate(noticias):
-                # Extracción segura del título (Solución al error de Yahoo)
-                titular = item.get('title')
-                if not titular and 'content' in item:
-                    titular = item['content'].get('title')
+            with col_noticias:
+                if not noticias:
+                    st.warning("Sin noticias nuevas hoy.")
                 
-                if titular:
-                    # Análisis
-                    resultado = analista_ia(titular)[0]
-                    sentimiento = resultado['label']
-                    score = resultado['score']
-                    
-                    if sentimiento == "Positive": conteo_pos += 1
-                    if sentimiento == "Negative": conteo_neg += 1
-                    
-                    # Mostrar fila
-                    with col1:
-                        st.write(titular)
-                    with col2:
-                        if sentimiento == "Positive":
-                            st.success("🟢 COMPRA")
-                        elif sentimiento == "Negative":
-                            st.error("🔴 VENTA")
-                        else:
-                            st.info("🟡 NEUTRAL")
-                    with col3:
-                        st.write(f"{score:.2f}")
-                    
-                    st.markdown("---")
+                barra = st.progress(0)
                 
-                barra.progress((i + 1) / len(noticias))
+                for i, item in enumerate(noticias):
+                    titular = item.get('title')
+                    if not titular and 'content' in item:
+                        titular = item['content'].get('title')
+                    
+                    if titular:
+                        # 1. ANÁLISIS
+                        resultado = analista_ia(titular)[0]
+                        sentimiento = resultado['label'] # Definimos 'sentimiento'
+                        score = resultado['score']
+                        
+                        # 2. ICONOS (Aquí estaba el error, ahora dice 'sentimiento')
+                        icono = "⚪"
+                        if sentimiento == "Positive": icono = "🟢"
+                        elif sentimiento == "Negative": icono = "🔴"
+                        
+                        st.markdown(f"**{icono} {sentimiento}** ({score:.2f}): _{titular}_")
+
+                        # 3. LÓGICA DE INVERSIÓN
+                        if score > umbral:
+                            # COMPRA
+                            if sentimiento == "Positive" and st.session_state['dinero'] > precio_actual:
+                                monto_inversion = st.session_state['dinero'] * 0.20
+                                cantidad_comprada = monto_inversion / precio_actual
+                                
+                                st.session_state['dinero'] -= monto_inversion
+                                st.session_state['acciones'] += cantidad_comprada
+                                
+                                msg = f"COMPRA: {cantidad_comprada:.2f} acciones a ${precio_actual:.2f}"
+                                st.session_state['historial_transacciones'].append(f"🟢 {msg}")
+                                st.success(f"💰 ¡ORDEN EJECUTADA! {msg}")
+
+                            # VENTA
+                            elif sentimiento == "Negative" and st.session_state['acciones'] > 0:
+                                ganancia = st.session_state['acciones'] * precio_actual
+                                
+                                st.session_state['dinero'] += ganancia
+                                st.session_state['acciones'] = 0
+                                
+                                msg = f"VENTA: Se liquidaron todas las acciones. Recibes ${ganancia:.2f}"
+                                st.session_state['historial_transacciones'].append(f"🔻 {msg}")
+                                st.error(f"📉 ¡ORDEN EJECUTADA! {msg}")
+                        
+                    barra.progress((i + 1) / len(noticias))
+
+            # C) MOSTRAR HISTORIAL
+            with col_log:
+                st.subheader("📜 Historial")
+                for log in reversed(st.session_state['historial_transacciones']):
+                    st.caption(log)
             
-            # Resumen final
-            st.success(f"Resumen Final: {conteo_pos} Señales de Compra vs {conteo_neg} de Venta")
+            # D) ACTUALIZAR VALOR TOTAL
+            st.write("---")
+            valor_total = st.session_state['dinero'] + (st.session_state['acciones'] * precio_actual)
+            rentabilidad = ((valor_total - 10000) / 10000) * 100
+            
+            col1, col2 = st.columns(2)
+            col1.metric("Valor Total del Portafolio", f"${valor_total:,.2f}")
+            col2.metric("Rentabilidad Total", f"{rentabilidad:.2f}%")
+            
+            if valor_total > 10000:
+                st.balloons()
 
     except Exception as e:
-        st.error(f"Error: {e}")
-        # --- PIE DE PÁGINA / DISCLAIMER ---
+        st.error(f"Error en el sistema: {e}")
+
+# Disclaimer
 st.markdown("---")
-st.caption("""
-⚠️ **Aviso Legal:** Esta herramienta es un prototipo de ingeniería con fines educativos. 
-El análisis de sentimiento es generado por IA y puede contener errores. 
-No debe tomarse como asesoramiento financiero profesional. Invierte bajo tu propio riesgo.
-""")
+st.caption("⚠️ Simulador educativo. El dinero es ficticio.")
