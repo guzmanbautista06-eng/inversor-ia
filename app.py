@@ -521,13 +521,11 @@ def main_app():
                 col_qty, col_all = st.columns([3, 1])
                 
                 # Input de cantidad (Límite máximo la posición actual)
-                # El valor del number_input es la cantidad que el usuario QUIERE vender
                 qty = col_qty.number_input("Cantidad acciones", 0.0, current_qty, step=0.0001, key="sell_qty_input")
                 
                 # Lógica de Botón Venta Total (Trigger)
                 if col_all.button("TODO", key="btn_sell_all", use_container_width=True):
                     # Al presionar TODO, forzamos la venta total usando la cantidad actual de inmediato en el siguiente ciclo
-                    # **SOLUCIÓN FINAL:** La venta total se ejecuta en el siguiente ciclo, no en este.
                     st.session_state['liquidar_todo'] = True
                     st.rerun() 
 
