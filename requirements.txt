@@ -1,9 +1,8 @@
 streamlit
 yfinance
-transformers
-deep_translator
 plotly
 pandas
-torch 
+textblob
 pytz
+requests
 beautifulsoup4

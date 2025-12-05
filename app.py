@@ -1,7 +1,5 @@
 import streamlit as st
 import yfinance as yf
-from transformers import pipeline
-from deep_translator import GoogleTranslator
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
@@ -11,334 +9,278 @@ import pytz
 import hashlib
 import json
 import os
+import numpy as np
+from textblob import TextBlob 
 
 # ==========================================
-# 1. CONFIGURACIÓN DEL SISTEMA (ULTRA WIDE)
+# 1. CONFIGURACIÓN DEL SISTEMA
 # ==========================================
 st.set_page_config(
-    page_title="TITANIUM TERMINAL | V5 ELITE", 
-    page_icon="💠", 
+    page_title="TITANIUM BROKER | V16.1 INTEGRATED", 
+    page_icon="🏛️", 
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # ==========================================
-# 2. INYECCIÓN CSS (INTERFAZ "GLASSMORPHISM")
+# 2. ESTÉTICA "GOOGLE FINANCE PRO" (CSS)
 # ==========================================
-# URL de fondo: Un paisaje urbano financiero oscuro y abstracto
 BACKGROUND_URL = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?q=80&w=2070&auto=format&fit=crop"
 
 st.markdown(f"""
 <style>
-    /* IMPORTAR FUENTES */
-    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;800&family=Roboto+Mono:wght@400;600&display=swap');
 
-    /* FONDO GENERAL CON OVERLAY OSCURO */
+    /* FONDO */
     .stApp {{
         background-image: url("{BACKGROUND_URL}");
         background-size: cover;
         background-position: center;
         background-attachment: fixed;
     }}
-    
-    /* CAPA OSCURA PARA LEIBILIDAD */
     .stApp::before {{
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(5, 5, 10, 0.90); /* 90% Oscuridad */
-        z-index: -1;
+        content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(10, 14, 20, 0.95); backdrop-filter: blur(5px); z-index: -1;
     }}
 
-    /* FUENTES GLOBALES */
-    html, body, [class*="css"] {{
-        font-family: 'Rajdhani', sans-serif;
-        color: #e0e0e0;
+    /* TIPOGRAFÍA */
+    html, body, [class*="css"] {{ font-family: 'Manrope', sans-serif; color: #e0e0e0; letter-spacing: -0.3px; }}
+    h1, h2, h3, h4 {{ font-family: 'Manrope', sans-serif; font-weight: 800; color: #fff !important; }}
+
+    /* COMPONENTES */
+    section[data-testid="stSidebar"] {{ background-color: rgba(5, 7, 10, 0.98); border-right: 1px solid #1f222a; }}
+    
+    .stTextInput>div>div>input, .stNumberInput>div>div>input {{
+        background-color: rgba(255,255,255,0.03) !important; color: #fff !important;
+        border: 1px solid #2d323e !important; font-family: 'Roboto Mono', monospace;
     }}
     
-    h1, h2, h3 {{
-        font-family: 'Rajdhani', sans-serif;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        font-weight: 700;
-    }}
-
-    /* BARRA LATERAL ESTILO CRISTAL */
-    section[data-testid="stSidebar"] {{
-        background-color: rgba(15, 15, 20, 0.85);
-        backdrop-filter: blur(10px);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }}
-    
-    /* INPUTS ESTILO TERMINAL */
-    .stTextInput>div>div>input {{
-        background-color: rgba(0, 0, 0, 0.5);
-        color: #00d4ff;
-        border: 1px solid #333;
-        font-family: 'JetBrains Mono', monospace;
-        border-radius: 0px;
-    }}
-    .stTextInput>div>div>input:focus {{
-        border-color: #00d4ff;
-        box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
-    }}
-
-    /* TARJETAS MÉTRICAS (KPIs) */
     div[data-testid="stMetric"] {{
-        background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
-        backdrop-filter: blur(5px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        transition: transform 0.2s;
-    }}
-    div[data-testid="stMetric"]:hover {{
-        border-color: #00d4ff;
-        transform: translateY(-2px);
-    }}
-    div[data-testid="stMetric"] label {{
-        color: #888;
-        font-size: 0.8rem;
-        font-family: 'JetBrains Mono', monospace;
-    }}
-    div[data-testid="stMetric"] div[data-testid="stMetricValue"] {{
-        font-family: 'Rajdhani', sans-serif;
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #fff;
-        text-shadow: 0 0 10px rgba(255,255,255,0.2);
-    }}
-
-    /* BOTONES */
-    .stButton>button {{
-        background: linear-gradient(90deg, #1a1a1a 0%, #222 100%);
-        color: #bbb;
-        border: 1px solid #444;
-        border-radius: 4px;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        transition: all 0.3s;
-    }}
-    .stButton>button:hover {{
-        border-color: #00d4ff;
-        color: #00d4ff;
-        box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-    }}
-
-    /* TABS */
-    .stTabs [data-baseweb="tab-list"] {{
-        gap: 20px;
-        background-color: transparent;
-        padding-bottom: 10px;
-        border-bottom: 1px solid rgba(255,255,255,0.1);
-    }}
-    .stTabs [data-baseweb="tab"] {{
-        height: 40px;
-        background-color: transparent;
-        border: none;
-        color: #666;
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 600;
-        font-size: 1.1rem;
-    }}
-    .stTabs [aria-selected="true"] {{
-        color: #00d4ff;
-        border-bottom: 2px solid #00d4ff;
+        background: rgba(255,255,255,0.02); border: 1px solid #2d323e;
+        padding: 15px; border-radius: 10px;
     }}
     
-    /* LOGS Y TEXT AREAS */
-    .stTextArea textarea {{
-        background-color: #0a0a0a;
-        color: #00ff41;
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 0.8rem;
+    /* BOTONES GOOGLE STYLE */
+    .stButton>button {{
+        background: rgba(255,255,255,0.05); color: #fff; border: 1px solid #2d323e;
+        border-radius: 20px; font-weight: 700; transition: 0.2s;
+    }}
+    .stButton>button:hover {{ background: rgba(255,255,255,0.1); border-color: #5f6368; }}
+    .stButton>button[kind="primary"] {{
+        background: #4285f4; border-color: #4285f4; color: #fff;
+    }}
+
+    /* HEADER PRECIOS */
+    .live-header {{
+        background: rgba(0,0,0,0.3); backdrop-filter: blur(10px); padding: 25px;
+        border-bottom: 2px solid #2d323e; margin-bottom: 25px; border-radius: 0 0 15px 15px;
+    }}
+    .live-price {{ font-family: 'Roboto Mono'; font-size: 3.5rem; font-weight: 700; }}
+    
+    /* COLORES ESTADO */
+    .bg-up {{ background-color: rgba(52, 168, 83, 0.15); color: #34a853; }}
+    .bg-down {{ background-color: rgba(234, 67, 53, 0.15); color: #ea4335; }}
+    .text-up {{ color: #34a853 !important; }}
+    .text-down {{ color: #ea4335 !important; }}
+
+    /* CONTENEDOR IA */
+    .ai-container {{
+        background: rgba(20, 25, 35, 0.9); border: 1px solid #4285f4;
+        border-radius: 15px; padding: 30px; margin-top: 20px;
+        box-shadow: 0 0 30px rgba(66, 133, 244, 0.15);
+    }}
+    .probability-score {{ font-size: 4rem; font-weight: 900; font-family: 'Roboto Mono'; line-height: 1; }}
+    
+    /* PANEL DE OPERACIONES */
+    .trade-panel {{
+        background: rgba(255, 255, 255, 0.03);
         border: 1px solid #333;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
     }}
 </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. SISTEMA DE SEGURIDAD & PERSISTENCIA
+# 3. SEGURIDAD
 # ==========================================
 DB_FILE = 'users_db.json'
 
 def load_users():
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, 'r') as f:
-            return json.load(f)
-    else:
-        default_db = {'admin': hashlib.sha256(str.encode('admin123')).hexdigest()}
-        with open(DB_FILE, 'w') as f:
-            json.dump(default_db, f)
-        return default_db
-
-def save_users(db):
-    with open(DB_FILE, 'w') as f:
-        json.dump(db, f)
+        with open(DB_FILE, 'r') as f: return json.load(f)
+    default = {'admin': hashlib.sha256(str.encode('admin123')).hexdigest()}
+    with open(DB_FILE, 'w') as f: json.dump(default, f)
+    return default
 
 def check_hashes(password, hashed_text):
     return hashlib.sha256(str.encode(password)).hexdigest() == hashed_text
 
-if 'db_users' not in st.session_state:
-    st.session_state['db_users'] = load_users()
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-if 'user_current' not in st.session_state:
-    st.session_state['user_current'] = None
+if 'db_users' not in st.session_state: st.session_state['db_users'] = load_users()
+if 'authenticated' not in st.session_state: st.session_state['authenticated'] = False
+if 'user_current' not in st.session_state: st.session_state['user_current'] = None
 
 # ==========================================
-# 4. PANTALLA DE ACCESO (LOGIN)
+# 4. LOGIN
 # ==========================================
 def login_screen():
     c1, c2, c3 = st.columns([1, 1, 1])
     with c2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        # Logo o Título Estilizado
-        st.markdown(
-            """
-            <div style='text-align: center; margin-bottom: 20px; padding: 40px; border: 1px solid rgba(0, 212, 255, 0.3); background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); border-radius: 10px;'>
-                <h1 style='font-family: Rajdhani; color: #fff; font-size: 4rem; margin:0; text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);'>TITANIUM</h1>
-                <p style='color: #00d4ff; letter-spacing: 5px; font-size: 1rem; font-family: JetBrains Mono;'>TERMINAL FINANCIERA V5.0</p>
-            </div>
-            """, unsafe_allow_html=True
-        )
+        st.markdown("<br><br><br>", unsafe_allow_html=True)
+        st.markdown("""
+        <div style='text-align: center; padding: 50px; background: rgba(10,14,20,0.8); border: 1px solid #2d323e; border-radius: 16px; backdrop-filter: blur(10px);'>
+            <h1 style='font-size: 3rem; margin:0; color:#fff;'>TITANIUM</h1>
+            <p style='color: #4285f4; font-weight:800; letter-spacing: 1px;'>BROKERAGE V16.1</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        tab_login, tab_signup = st.tabs(["ACCESO", "REGISTRO"])
+        st.markdown("<br>", unsafe_allow_html=True)
+        user = st.text_input("USUARIO", key="u")
+        pw = st.text_input("CLAVE", type="password", key="p")
         
-        with tab_login:
-            st.markdown("<div style='background: rgba(0,0,0,0.5); padding: 20px; border-radius: 5px;'>", unsafe_allow_html=True)
-            user = st.text_input("USUARIO", key="log_u")
-            pw = st.text_input("CLAVE", type="password", key="log_p")
-            
-            if st.button("INICIAR SISTEMA", type="primary", use_container_width=True):
-                st.session_state['db_users'] = load_users()
-                if user in st.session_state['db_users']:
-                    if check_hashes(pw, st.session_state['db_users'][user]):
-                        st.session_state['authenticated'] = True
-                        st.session_state['user_current'] = user
-                        st.toast(f"BIENVENIDO AGENTE {user.upper()}", icon="💠")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else:
-                        st.error("CLAVE INCORRECTA")
-                else:
-                    st.error("USUARIO DESCONOCIDO")
-            
-            st.markdown("---")
-            st.caption("🔒 Acceso Demo: `admin` / `admin123`")
-            st.markdown("</div>", unsafe_allow_html=True)
-
-        with tab_signup:
-            st.markdown("<div style='background: rgba(0,0,0,0.5); padding: 20px; border-radius: 5px;'>", unsafe_allow_html=True)
-            nu = st.text_input("NUEVO USUARIO", key="new_u")
-            np = st.text_input("NUEVA CLAVE", type="password", key="new_p")
-            cp = st.text_input("CONFIRMAR CLAVE", type="password", key="conf_p")
-            
-            if st.button("CREAR CREDENCIALES", use_container_width=True):
-                st.session_state['db_users'] = load_users()
-                if np == cp and len(np) > 3:
-                    if nu not in st.session_state['db_users']:
-                        st.session_state['db_users'][nu] = hashlib.sha256(str.encode(np)).hexdigest()
-                        save_users(st.session_state['db_users'])
-                        st.success("REGISTRO EXITOSO")
-                    else:
-                        st.warning("USUARIO YA EXISTE")
-                else:
-                    st.error("ERROR EN DATOS")
-            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("INICIAR SESIÓN", use_container_width=True, type="primary"):
+            db = load_users()
+            if user in db and check_hashes(pw, db[user]):
+                st.session_state['authenticated'] = True
+                st.session_state['user_current'] = user
+                st.rerun()
+            else: st.error("Acceso Denegado")
+        st.caption("Demo: admin / admin123")
 
 # ==========================================
-# 5. LÓGICA DE NEGOCIO Y APP PRINCIPAL
+# 5. LÓGICA DE NEGOCIO
 # ==========================================
 def main_app():
-    # Inicialización de Estado
-    for k, v in {'dinero': 10000.0, 'acciones': 0.0, 'historial': [], 
-                 'ticker_actual': 'BTC-USD', 'analisis_pendiente': None}.items():
+    defaults = {'dinero': 10000.0, 'acciones': 0.0, 'historial': [], 
+                'ticker_actual': 'BTC-USD', 'timeframe': '1y'}
+    for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
 
-    # Carga de IA (Silenciosa)
-    @st.cache_resource
-    def get_models():
-        try:
-            mod = pipeline("sentiment-analysis", model="yiyanghkust/finbert-tone")
-            tra = GoogleTranslator(source='auto', target='es')
-            return mod, tra
-        except: return None, None
-    
-    analista_ia, traductor = get_models()
+    COMMISSION_RATE = 0.0015 
 
-    # --- Helpers ---
+    # --- MOTOR DE DATOS INTELIGENTE ---
+    def get_chart_data(ticker, period):
+        try:
+            t = yf.Ticker(ticker)
+            # Mapeo de Periodo -> Intervalo óptimo
+            if period == '1d': data = t.history(period='1d', interval='5m')
+            elif period == '5d': data = t.history(period='5d', interval='15m')
+            elif period == '1mo': data = t.history(period='1mo', interval='60m')
+            elif period == '6mo': data = t.history(period='6mo', interval='1d')
+            elif period == '1y': data = t.history(period='1y', interval='1d')
+            else: data = t.history(period='max', interval='1wk')
+            
+            if data.empty: return None
+            return data
+        except: return None
+
+    @st.cache_data(ttl=300) 
+    def get_ai_analysis(ticker):
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="6mo")
+            if hist.empty: return None, 0, []
+            
+            # --- 1. CÁLCULO TÉCNICO ---
+            delta = hist['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = rsi.iloc[-1]
+            
+            ema12 = hist['Close'].ewm(span=12).mean()
+            ema26 = hist['Close'].ewm(span=26).mean()
+            macd = ema12 - ema26
+            signal = macd.ewm(span=9).mean()
+            current_macd = macd.iloc[-1]
+            current_sig = signal.iloc[-1]
+            
+            # --- 2. ANÁLISIS NOTICIAS (ROBUSTO) ---
+            news_data = []
+            sent_score = 50
+            
+            try:
+                # Intenta obtener noticias de varias formas
+                raw_news = t.news
+                if not raw_news: raw_news = []
+                
+                scores = []
+                # Analizar hasta 8 noticias
+                for n in raw_news[:8]:
+                    # Buscar el título donde sea que esté escondido
+                    title = n.get('title')
+                    if not title and 'content' in n:
+                        title = n['content'].get('title')
+                        
+                    if not title: continue
+                    
+                    # Obtener proveedor y link si existen
+                    publisher = n.get('publisher', 'Yahoo Finance')
+                    link = n.get('link', '#')
+                    
+                    blob = TextBlob(title)
+                    pol = blob.sentiment.polarity
+                    
+                    if pol > 0.1: lbl = "POSITIVO"
+                    elif pol < -0.1: lbl = "NEGATIVO"
+                    else: lbl = "NEUTRAL"
+                    
+                    scores.append(pol)
+                    news_data.append({
+                        'title': title, 
+                        'label': lbl, 
+                        'publisher': publisher, 
+                        'link': link
+                    })
+                
+                if scores:
+                    avg_pol = sum(scores) / len(scores)
+                    sent_score = ((avg_pol + 1) / 2) * 100
+            except Exception as e:
+                print(f"Error news: {e}")
+                pass
+            
+            # --- 3. FUSIÓN DE PROBABILIDAD ---
+            prob = 50
+            if current_rsi < 30: prob += 20 
+            elif current_rsi > 70: prob -= 20 
+            if current_macd > current_sig: prob += 10 
+            else: prob -= 10 
+            if sent_score > 60: prob += 15
+            elif sent_score < 40: prob -= 15
+            prob = max(0, min(100, prob))
+            
+            return prob, sent_score, news_data
+        except Exception as e: return 0, 0, []
+
     def set_ticker(t):
         st.session_state['ticker_actual'] = t
-        st.session_state['analisis_pendiente'] = None
         st.rerun()
 
-    def get_price(tkr):
-        try: return float(tkr.fast_info.last_price)
-        except:
-            try: return float(tkr.history(period='1d')['Close'].iloc[-1])
-            except: return 0.0
-
-    def check_market(sym):
-        is_crypto = any(x in sym for x in ['-USD', '=X'])
-        if is_crypto: return True, "MERCADO 24/7 (CRYPTO/FX)"
-        
-        # Horario Bolsa NY
-        tz = pytz.timezone('US/Eastern')
-        now = datetime.now(tz)
-        is_open = now.weekday() < 5 and 9 <= now.hour < 16 and (now.hour > 9 or now.minute >= 30)
-        return is_open, "NYSE: ABIERTO" if is_open else "NYSE: CERRADO"
-
     # ==========================
-    # BARRA LATERAL (CONTROLES)
+    # BARRA LATERAL
     # ==========================
     with st.sidebar:
-        st.markdown(f"""
-        <div style='border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;'>
-            <h2 style='color:#00d4ff; margin:0;'>TITANIUM</h2>
-            <small style='color:#666; font-family: JetBrains Mono;'>USR: {st.session_state['user_current'].upper()}</small>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Buscador
-        st.markdown("#### 🔎 ACTIVO")
-        new_t = st.text_input("Ticker", value=st.session_state['ticker_actual'], label_visibility="collapsed").upper().strip()
-        if new_t != st.session_state['ticker_actual']: set_ticker(new_t)
+        st.markdown("### 💠 TITANIUM")
+        curr_t = st.text_input("BUSCAR ACTIVO", value=st.session_state['ticker_actual']).upper().strip()
+        if curr_t != st.session_state['ticker_actual']: set_ticker(curr_t)
         
         st.markdown("---")
         
-        # Info Mercado
-        is_open, mkt_msg = check_market(st.session_state['ticker_actual'])
-        sim_mode = st.toggle("MODO SIMULACIÓN", value=True)
-        active = is_open or sim_mode
+        t = yf.Ticker(st.session_state['ticker_actual'])
+        try: curr_price = float(t.fast_info.last_price)
+        except: curr_price = 0.0
+            
+        equity = st.session_state['dinero'] + (st.session_state['acciones'] * curr_price)
         
-        st.markdown(f"""
-        <div style='background: rgba(0,0,0,0.3); padding: 10px; border-radius: 5px; border-left: 3px solid {'#00ff41' if is_open else '#ff003c'};'>
-            <span style='font-family: JetBrains Mono; font-size: 0.8rem;'>{mkt_msg}</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("PODER DE COMPRA", f"${st.session_state['dinero']:,.2f}")
+        st.metric("VALOR CARTERA", f"${equity:,.2f}")
         
         st.markdown("---")
-        
-        # Cartera Sidebar
-        t_obj = yf.Ticker(st.session_state['ticker_actual'])
-        px = get_price(t_obj)
-        
-        st.markdown("#### 💼 PORTAFOLIO")
-        equity = st.session_state['dinero'] + (st.session_state['acciones'] * px)
-        c1, c2 = st.columns(2)
-        c1.metric("EFECTIVO", f"${st.session_state['dinero']/1000:.1f}K")
-        c2.metric("POSICIÓN", f"{st.session_state['acciones']:.4f}")
-        st.metric("VALOR TOTAL", f"${equity:,.2f}", delta=f"{(equity-10000)/100:.2f}%")
-        
-        st.markdown("---")
-        if st.button("SALIR", type="secondary"):
+        if st.button("CERRAR SESIÓN"):
             st.session_state['authenticated'] = False
             st.rerun()
 
@@ -346,231 +288,197 @@ def main_app():
     # CUERPO PRINCIPAL
     # ==========================
     
-    # Header Dinámico
-    h1, h2 = st.columns([3, 1])
-    with h1:
-        st.markdown(f"<h1 style='font-size: 3.5rem; margin-bottom: 0;'>{st.session_state['ticker_actual']}</h1>", unsafe_allow_html=True)
-        try:
-            name = t_obj.info.get('longName', 'Unknown Asset')
-            st.caption(f"📍 {name}")
-        except: st.caption("DATOS DE MERCADO EN TIEMPO REAL")
+    # 1. HEADER (Live Ticker)
+    try:
+        t_info = t.fast_info
+        lp = t_info.last_price
+        pc = t_info.previous_close
+        chg_pct = ((lp - pc) / pc) * 100
+        long_name = t.info.get('longName', st.session_state['ticker_actual'])
+    except:
+        lp = 0
+        chg_pct = 0
+        long_name = st.session_state['ticker_actual']
+
+    col_cls = "bg-up" if chg_pct >= 0 else "bg-down"
+    txt_cls = "text-up" if chg_pct >= 0 else "text-down"
+    sign = "+" if chg_pct >= 0 else ""
+
+    st.markdown(f"""
+    <div class="live-header">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div>
+                <h1 class="ticker-name">{st.session_state['ticker_actual']}</h1>
+                <div class="company-name">{long_name}</div>
+            </div>
+            <div>
+                <div class="live-price {txt_cls}">${lp:,.2f}</div>
+                <div style="text-align:right;">
+                    <span class="price-change {col_cls}">{sign}{chg_pct:.2f}%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 2. SELECTOR DE CATEGORÍAS
+    with st.expander("📁 EXPLORADOR DE ACTIVOS", expanded=False):
+        cats = {
+            "🔥 TENDENCIA": ["NVDA", "TSLA", "AAPL", "MSFT", "AMZN"],
+            "₿ CRIPTO": ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD"],
+            "💱 FOREX": ["EURUSD=X", "JPY=X", "GBPUSD=X"]
+        }
+        cols_cat = st.columns(len(cats))
+        for i, (k, v) in enumerate(cats.items()):
+            with cols_cat[i]:
+                st.markdown(f"**{k}**")
+                for item in v:
+                    if st.button(item, key=f"b_{item}"): set_ticker(item)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 3. PESTAÑAS PRINCIPALES (MODIFICADO: SOLO 2 PESTAÑAS)
+    tab_chart, tab_ai = st.tabs(["📊 GRÁFICO & OPERACIONES", "🧠 CEREBRO QUANTUM & NOTICIAS"])
+
+    # --- PESTAÑA GRÁFICO & OPERATIVA UNIFICADA ---
+    with tab_chart:
+        col_tf, col_sp = st.columns([2, 4])
+        with col_tf:
+            timeframe = st.select_slider(
+                "RANGO TEMPORAL", 
+                options=['1d', '5d', '1mo', '6mo', '1y'], 
+                value='1y', 
+                key='tf_selector'
+            )
         
-    with h2:
-        if px > 0:
-            color = "#00ff41" if px > 0 else "#fff" # Lógica simple, se podria mejorar con cambio diario
+        df = get_chart_data(st.session_state['ticker_actual'], timeframe)
+        
+        if df is not None and not df.empty:
+            color_chart = '#34a853' if chg_pct >= 0 else '#ea4335'
+            fill_chart = 'rgba(52, 168, 83, 0.1)' if chg_pct >= 0 else 'rgba(234, 67, 53, 0.1)'
+            
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_width=[0.2, 0.8])
+            
+            fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', fill='tozeroy', line=dict(color=color_chart, width=2), fillcolor=fill_chart, name='Precio'), row=1, col=1)
+            fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color='#555', name='Volumen', opacity=0.3), row=2, col=1)
+            
+            fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500, margin=dict(l=0, r=0, t=10, b=0), showlegend=False, hovermode="x unified", xaxis_rangeslider_visible=False)
+            fig.update_xaxes(showgrid=False, row=1, col=1)
+            fig.update_yaxes(showgrid=True, gridcolor='rgba(255,255,255,0.05)', side="right", row=1, col=1)
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Datos no disponibles para este rango.")
+
+        # --- SECCIÓN DE OPERACIONES (MOVIDA DEBAJO DEL GRÁFICO) ---
+        st.markdown("<hr style='border-color: #333;'>", unsafe_allow_html=True)
+        st.markdown("### 💳 PANEL DE OPERACIONES")
+        
+        c_b, c_s = st.columns(2)
+        
+        with c_b:
+            with st.container(border=True):
+                st.markdown("<h3 style='color:#34a853'>COMPRAR</h3>", unsafe_allow_html=True)
+                amount = st.number_input("Monto a invertir ($)", 0.0, st.session_state['dinero'], step=100.0)
+                
+                fee = amount * COMMISSION_RATE
+                total = amount
+                shares = (amount - fee) / lp if lp > 0 else 0
+                
+                st.markdown(f"""
+                <div style='display:flex; justify-content:space-between; color:#888; font-size:0.9rem;'>
+                    <span>Comisión:</span><span>${fee:.2f}</span>
+                </div>
+                <div style='display:flex; justify-content:space-between; color:#fff; font-weight:bold; font-size:1.1rem; border-top:1px solid #333; margin-top:5px; padding-top:5px;'>
+                    <span>Recibes:</span><span>{shares:.4f} acc</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("CONFIRMAR COMPRA", use_container_width=True, type="primary"):
+                    if amount > 0:
+                        st.session_state['dinero'] -= total
+                        st.session_state['acciones'] += shares
+                        st.session_state['historial'].append(f"BUY {shares:.4f} @ ${lp:.2f}")
+                        st.success("ORDEN EJECUTADA")
+                        time.sleep(1)
+                        st.rerun()
+
+        with c_s:
+            with st.container(border=True):
+                st.markdown("<h3 style='color:#ea4335'>VENDER</h3>", unsafe_allow_html=True)
+                qty = st.number_input("Cantidad acciones", 0.0, st.session_state['acciones'], step=0.1)
+                
+                gross = qty * lp
+                fee_s = gross * COMMISSION_RATE
+                net = gross - fee_s
+                
+                st.markdown(f"""
+                <div style='display:flex; justify-content:space-between; color:#888; font-size:0.9rem;'>
+                    <span>Comisión:</span><span>${fee_s:.2f}</span>
+                </div>
+                <div style='display:flex; justify-content:space-between; color:#fff; font-weight:bold; font-size:1.1rem; border-top:1px solid #333; margin-top:5px; padding-top:5px;'>
+                    <span>Recibes:</span><span>${net:.2f}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("CONFIRMAR VENTA", use_container_width=True):
+                    if qty > 0:
+                        st.session_state['dinero'] += net
+                        st.session_state['acciones'] -= qty
+                        st.session_state['historial'].append(f"SELL {qty:.4f} @ ${lp:.2f}")
+                        st.success("ORDEN EJECUTADA")
+                        time.sleep(1)
+                        st.rerun()
+
+    # --- PESTAÑA CEREBRO QUANTUM & NOTICIAS ---
+    with tab_ai:
+        prob, sent_val, news = get_ai_analysis(st.session_state['ticker_actual'])
+        
+        col_gauge, col_info = st.columns([1, 1.5])
+        
+        with col_gauge:
             st.markdown(f"""
-            <div style='text-align: right;'>
-                <span style='font-size: 3rem; font-family: Rajdhani; font-weight: bold; color: {color};'>${px:,.2f}</span><br>
-                <span style='font-family: JetBrains Mono; color: #00d4ff; font-size: 0.8rem;'>PRECIO ACTUAL</span>
+            <div class='ai-container' style='text-align: center;'>
+                <div style='color:#888; font-size:0.9rem; font-weight:700;'>PROBABILIDAD DE ÉXITO (ALZA)</div>
+                <div class='probability-score' style='color: {"#34a853" if prob > 60 else "#ea4335" if prob < 40 else "#fbbc04"};'>
+                    {prob:.1f}%
+                </div>
+                <div style='margin-top:10px; font-weight:bold; color:#fff;'>
+                    {"COMPRA FUERTE" if prob > 70 else "COMPRA" if prob > 55 else "VENTA FUERTE" if prob < 30 else "NEUTRAL"}
+                </div>
             </div>
             """, unsafe_allow_html=True)
-
-    # Discovery Hub (Botones tipo Chips)
-    with st.expander("📡 RADAR DE MERCADO", expanded=False):
-        cats = {
-            "POPULARES": ["NVDA", "TSLA", "AAPL", "MSFT", "AMZN"],
-            "CRYPTO": ["BTC-USD", "ETH-USD", "SOL-USD", "DOGE-USD"],
-            "VOLATILIDAD": ["GME", "MSTR", "COIN", "MARA"],
-            "FOREX": ["EURUSD=X", "JPY=X", "GBPUSD=X"]
-        }
-        tabs = st.tabs(list(cats.keys()))
-        for i, (cat, ticks) in enumerate(cats.items()):
-            with tabs[i]:
-                cols = st.columns(len(ticks))
-                for j, t in enumerate(ticks):
-                    if cols[j].button(t, key=f"btn_{cat}_{t}", use_container_width=True):
-                        set_ticker(t)
-
-    # Pestañas Principales
-    if px > 0:
-        main_tab1, main_tab2, main_tab3 = st.tabs(["📊 GRÁFICO AVANZADO", "🧠 INTELIGENCIA ARTIFICIAL", "📝 ÓRDENES"])
-        
-        # --- TAB 1: GRÁFICO PRO ---
-        with main_tab1:
-            # Selector de Rango Temporal
-            ranges = {
-                "1D (Día)": ("1d", "5m"),
-                "5D (Semana)": ("5d", "15m"),
-                "1M (Mes)": ("1mo", "60m"),
-                "3M (Trimestre)": ("3mo", "1d"),
-                "1Y (Año)": ("1y", "1d")
-            }
             
-            sel_range = st.radio("RANGO TEMPORAL", list(ranges.keys()), horizontal=True, label_visibility="collapsed")
-            p, i = ranges[sel_range]
-            
-            with st.spinner("Cargando datos de mercado..."):
-                # Lógica de Datos Robusta
-                df = pd.DataFrame()
-                try:
-                    df = t_obj.history(period=p, interval=i)
-                    if df.empty and p == "1d": # Fallback fin de semana
-                        df = t_obj.history(period="1mo", interval="1d")
-                        st.toast("⚠️ Mercado cerrado: Mostrando datos diarios recientes.", icon="ℹ️")
-                except: pass
+            st.info(f"""
+            **Análisis de Fusión:**
+            El algoritmo ha detectado un sentimiento de noticias de **{sent_val:.0f}/100** y señales técnicas combinadas que resultan en este score.
+            """)
 
-            if not df.empty:
-                # Creación del Gráfico con Subplots (Precio + Volumen)
-                fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                                   vertical_spacing=0.03, subplot_titles=('Precio', 'Volumen'), 
-                                   row_width=[0.2, 0.7])
-
-                # Velas Japonesas
-                fig.add_trace(go.Candlestick(
-                    x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-                    name="Precio",
-                    increasing_line_color='#00ff41', decreasing_line_color='#ff003c'
-                ), row=1, col=1)
-
-                # EMA 20 (Media Móvil Exponencial)
-                df['EMA20'] = df['Close'].ewm(span=20).mean()
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['EMA20'], mode='lines', name='EMA 20',
-                    line=dict(color='#00d4ff', width=1.5)
-                ), row=1, col=1)
-
-                # Barras de Volumen
-                colors_vol = ['#00ff41' if c >= o else '#ff003c' for c, o in zip(df['Close'], df['Open'])]
-                fig.add_trace(go.Bar(
-                    x=df.index, y=df['Volume'], name='Volumen',
-                    marker_color=colors_vol, opacity=0.5
-                ), row=2, col=1)
-
-                # Diseño Oscuro "TradingView" Style
-                fig.update_layout(
-                    template="plotly_dark",
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(10,10,10,0.5)',
-                    height=600,
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    xaxis_rangeslider_visible=False,
-                    showlegend=False,
-                    font=dict(family="JetBrains Mono", size=10, color="#aaa")
-                )
-                
-                # Ajustes de ejes
-                fig.update_xaxes(gridcolor='rgba(255,255,255,0.05)', showspikes=True, spikecolor="#00d4ff", spikethickness=1)
-                fig.update_yaxes(gridcolor='rgba(255,255,255,0.05)', showspikes=True, spikecolor="#00d4ff", spikethickness=1)
-
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Panel de Control Rápido
-                st.markdown("### ⚡ EJECUCIÓN RÁPIDA")
-                qc1, qc2, qc3 = st.columns([1, 1, 2])
-                monto = qc3.number_input("MONTO ($)", min_value=10.0, value=1000.0, step=100.0, label_visibility="collapsed")
-                
-                if qc1.button("COMPRAR (MARKET)", disabled=not active, use_container_width=True):
-                    if st.session_state['dinero'] >= monto:
-                        cant = monto / px
-                        st.session_state['dinero'] -= monto
-                        st.session_state['acciones'] += cant
-                        st.session_state['historial'].append(f"🟢 COMPRA {cant:.4f} @ ${px:.2f} | {datetime.now().strftime('%H:%M:%S')}")
-                        st.rerun()
-                    else: st.error("FONDOS INSUFICIENTES")
-                
-                if qc2.button("VENDER (MARKET)", disabled=not active, use_container_width=True):
-                    if st.session_state['acciones'] > 0:
-                        val = st.session_state['acciones'] * px
-                        st.session_state['dinero'] += val
-                        st.session_state['acciones'] = 0.0
-                        st.session_state['historial'].append(f"🔴 VENTA TODO @ ${px:.2f} | {datetime.now().strftime('%H:%M:%S')}")
-                        st.rerun()
-                    else: st.error("SIN POSICIONES")
-            else:
-                st.warning("DATOS NO DISPONIBLES EN ESTE MOMENTO")
-
-        # --- TAB 2: ANÁLISIS IA ---
-        with main_tab2:
-            col_a, col_b = st.columns([1, 2])
-            with col_a:
-                st.markdown("#### 🧠 MOTOR NEURONAL")
-                st.info("FinBERT analiza titulares de noticias globales para determinar el sentimiento del mercado.")
-                
-                umbral = st.slider("SENSIBILIDAD IA", 0.5, 0.99, 0.75)
-                
-                if st.button("ESCANEAR MERCADO", type="primary", use_container_width=True):
-                    if not analista_ia:
-                        st.error("MODELOS OFFLINE")
-                    else:
-                        with st.spinner("ANALIZANDO FLUJO DE DATOS..."):
-                            try:
-                                news = t_obj.news
-                                if not news: st.warning("SIN NOTICIAS RECIENTES")
-                                else:
-                                    items = []
-                                    score_sum = 0
-                                    validos = 0
-                                    
-                                    for n in news:
-                                        # Obtener título seguro
-                                        tit = n.get('title') or (n.get('content', {}).get('title') if n.get('content') else None)
-                                        if not tit: continue
-                                        
-                                        # Análisis
-                                        res = analista_ia(tit[:512])[0]
-                                        lbl = res['label']
-                                        conf = res['score']
-                                        
-                                        # Traducción visual
-                                        tit_es = tit # Por velocidad, traducimos al mostrar si es necesario, o dejamos en inglés técnico
-                                        try: tit_es = traductor.translate(tit)
-                                        except: pass
-
-                                        val = 1 if lbl == "Positive" else -1 if lbl == "Negative" else 0
-                                        score_sum += (val * conf)
-                                        validos += 1
-                                        
-                                        items.append({'txt': tit_es, 'lbl': lbl, 'conf': conf})
-                                    
-                                    # Resultado
-                                    final_score = (score_sum / validos) if validos > 0 else 0
-                                    prob_compra = ((final_score + 1) / 2) * 100
-                                    
-                                    dec = "MANTENER"
-                                    if prob_compra > (umbral * 100): dec = "COMPRA FUERTE"
-                                    elif prob_compra < (100 - (umbral * 100)): dec = "VENTA FUERTE"
-                                    
-                                    st.session_state['analisis_pendiente'] = {
-                                        'dec': dec, 'prob': prob_compra, 'data': items, 'px': px
-                                    }
-                            except Exception as e: st.error(f"ERROR: {str(e)}")
-
-            with col_b:
-                if st.session_state.get('analisis_pendiente'):
-                    res = st.session_state['analisis_pendiente']
-                    color_res = "#00ff41" if "COMPRA" in res['dec'] else "#ff003c" if "VENTA" in res['dec'] else "#888"
+        with col_info:
+            st.markdown("#### 📰 NOTICIAS ANALIZADAS")
+            if news:
+                for n in news:
+                    b_col = "#34a853" if n['label']=="POSITIVO" else "#ea4335" if n['label']=="NEGATIVO" else "#555"
+                    
+                    # Verificar si existe link, sino usar #
+                    link_url = n.get('link', '#')
                     
                     st.markdown(f"""
-                    <div style='background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; border: 1px solid {color_res}; text-align: center;'>
-                        <h2 style='color: {color_res}; margin: 0;'>{res['dec']}</h2>
-                        <h1 style='font-size: 4rem; margin: 0;'>{res['prob']:.1f}%</h1>
-                        <p style='color: #aaa; font-family: JetBrains Mono;'>SCORE DE CONFIANZA ALGORÍTMICA</p>
+                    <div style='border-left: 3px solid {b_col}; padding-left: 10px; margin-bottom: 10px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 0 5px 5px 0;'>
+                        <div style='display:flex; justify-content:space-between;'>
+                            <span style='font-size:0.75rem; font-weight:bold; color:{b_col};'>{n['label']}</span>
+                            <span style='font-size:0.7rem; color:#888;'>{n.get('publisher', 'Yahoo Finance')}</span>
+                        </div>
+                        <div style='color:#eee; font-weight:600; margin-top:3px;'>
+                            <a href="{link_url}" target="_blank" style="text-decoration:none; color:#eee;">{n['title']}</a>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    st.markdown("#### EVIDENCIA DETECTADA")
-                    for d in res['data'][:4]:
-                        icon = "🟢" if d['lbl']=="Positive" else "🔴" if d['lbl']=="Negative" else "⚪"
-                        st.markdown(f"""
-                        <div style='margin-bottom: 10px; border-left: 2px solid #333; padding-left: 10px;'>
-                            <span style='font-size: 1.2rem;'>{icon}</span> 
-                            <span style='font-size: 0.9rem; color: #ddd;'>{d['txt']}</span><br>
-                            <small style='color: #666; font-family: JetBrains Mono;'>CONF: {d['conf']:.4f}</small>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-        # --- TAB 3: LIBRO DE ÓRDENES ---
-        with main_tab3:
-            st.markdown("#### HISTORIAL DE TRANSACCIONES")
-            if st.session_state['historial']:
-                for h in reversed(st.session_state['historial']):
-                    color = "#00ff41" if "COMPRA" in h else "#ff003c" if "VENTA" in h else "#00d4ff"
-                    st.markdown(f"<div style='border-bottom: 1px solid #222; padding: 5px; color: {color}; font-family: JetBrains Mono;'>{h}</div>", unsafe_allow_html=True)
             else:
-                st.info("EL LIBRO DE ÓRDENES ESTÁ VACÍO")
+                st.write("Sin noticias recientes relevantes o error de conexión.")
 
 # ==========================================
-# 6. INICIO (ORQUESTADOR)
+# 6. INICIO
 # ==========================================
 if not st.session_state['authenticated']:
     login_screen()
