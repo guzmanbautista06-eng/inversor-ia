@@ -1,7 +1,9 @@
 streamlit
 yfinance
-plotly
 transformers
-torch
-scipy
-numpy
+deep_translator
+plotly
+pandas
+torch 
+pytz
+beautifulsoup4
